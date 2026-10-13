@@ -200,7 +200,7 @@ def fhir_groups(connection_id: str) -> Dict[str, list]:
     """Groups offered for a connection: fixtures in mock mode, none otherwise."""
     if not configing.is_mock_mode():
         return dict(groups=[])
-    return {'groups': list(FHIR_GROUPS.get(connection_id, []))}
+    return {"groups": list(FHIR_GROUPS.get(connection_id, []))}
 
 
 def fhir_endpoints(connection_id: str, group_id: str) -> list[Dict[str, Any]]:

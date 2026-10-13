@@ -242,8 +242,9 @@ async def request_access_token(
         logger.error(f"Error requesting access token: {e}")
         return {"success": False, "error": str(e)}
 
+
 async def get_groups(
-        connection,
+    connection,
 ) -> Dict[str, Any]:
     """
     GET the onboarding status -- ``poll_url`` (from Content-Location) if known,
@@ -255,9 +256,7 @@ async def get_groups(
     try:
         base_url = connection.base_url
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            response = await client.get(
-                f"{base_url}/Group"
-            )
+            response = await client.get(f"{base_url}/Group")
 
         if response.status_code in (200, 202):
             return response.json()
@@ -266,9 +265,8 @@ async def get_groups(
         logger.error(f"Error polling onboarding status: {e}")
         return {"success": False, "error": str(e)}
 
-async def davinci_data_export(
-        connection, group_id
-) -> Dict[str, Any]:
+
+async def davinci_data_export(connection, group_id) -> Dict[str, Any]:
     try:
         base_url = connection.base_url
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

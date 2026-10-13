@@ -7,6 +7,7 @@ above a table of FHIR endpoints. Clicking a row runs an invisible
 authentication pre-check against the selected connection (reusing a still-valid
 token); only on success does the (future) downstream action run.
 """
+
 import json
 from typing import Any
 
@@ -21,14 +22,11 @@ from locksmith.ui.toolkit.widgets.page import LocksmithFormPage, guarded
 from signet.core import remoting
 
 from ..connections.authenticate import ensure_authenticated
-from ..core import mock_data
 
 logger = help.ogler.getLogger(__name__)
 
 _API_ICON = ":/assets/material-icons/api.svg"
-_INTRO_TEXT = (
-    "To get started with PDex Member Match, select a connection from the dropdown below."
-)
+_INTRO_TEXT = "To get started with PDex Member Match, select a connection from the dropdown below."
 _NO_CONNECTIONS_TEXT = (
     "No active connections available. Register a connection on the Connections page."
 )
@@ -65,13 +63,17 @@ class FhirApisListPage(LocksmithFormPage):
         # Intro text
         self._intro_label = QLabel(_INTRO_TEXT)
         self._intro_label.setWordWrap(True)
-        self._intro_label.setStyleSheet(f"font-size: 14px; color: {colors.TEXT_SUBTLE};")
+        self._intro_label.setStyleSheet(
+            f"font-size: 14px; color: {colors.TEXT_SUBTLE};"
+        )
         selector_layout.addWidget(self._intro_label)
 
         # Connection dropdown
         self._connection_selector = FloatingLabelComboBox(label_text="Connection")
         self._connection_selector.setFixedWidth(400)
-        self._connection_selector.currentIndexChanged.connect(self._on_connection_changed)
+        self._connection_selector.currentIndexChanged.connect(
+            self._on_connection_changed
+        )
         selector_layout.addWidget(self._connection_selector)
 
         # Group dropdown (initially hidden)
@@ -99,7 +101,9 @@ class FhirApisListPage(LocksmithFormPage):
         self.content_layout.addWidget(self.table)
         self.content_layout.addStretch()
 
-        logger.info("FhirApisListPage initialized with dropdown selectors and table widget")
+        logger.info(
+            "FhirApisListPage initialized with dropdown selectors and table widget"
+        )
 
     def _get_db(self):
         """Return the signet plugin's LMDB, or None if no vault is open."""
