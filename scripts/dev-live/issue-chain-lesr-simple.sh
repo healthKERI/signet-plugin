@@ -9,7 +9,7 @@
 # bootstrap, SIGNET_DEV_LESR_AUTH_FILE) issues the LESR Auth and grants it to the QVI. This script therefore
 # writes env.out first, then waits for that grant before it can issue the LESR.
 #
-# Prerequisites: `kli witness demo` and vLEI-server on :7723 serving the combined schema dir (serve-schemas.sh).
+# Prerequisites: `kli witness demo` and network access to the schema bucket (SCHEMA_SERVER in env.sh).
 # Run Locksmith with SIGNET_LIVE=1 first so the holder exists, then:
 #
 #   source scripts/dev-live/env.sh
@@ -35,8 +35,8 @@ done
 
 curl -s -m3 -o /dev/null http://127.0.0.1:5642/ || { echo "demo witnesses are not running (kli witness demo)"; exit 1; }
 for s in "$SCHEMA_QVI" "$SCHEMA_LE" "$SCHEMA_LESR_AUTH" "$SCHEMA_LESR"; do
-  curl -fsS -m3 "${SCHEMA_SERVER}/oobi/${s}" 2>/dev/null | grep -q "$s" \
-    || { echo "vLEI-server does not serve schema ${s} on ${SCHEMA_SERVER}; run serve-schemas.sh and restart it with the combined dir"; exit 1; }
+  curl -fsS -m10 "${SCHEMA_SERVER}/oobi/${s}" 2>/dev/null | grep -q "$s" \
+    || { echo "schema ${s} is not available at ${SCHEMA_SERVER}/oobi/${s} (bucket unreachable or SAID not published)"; exit 1; }
 done
 
 KERI_ROOT=/usr/local/var/keri
@@ -46,8 +46,7 @@ if [ -n "$RESET" ]; then
   for d in "$KERI_ROOT"/*/"${DEV_LIVE_BASE}"; do
     [ -d "$d" ] && { echo "removing $d"; rm -rf "$d"; }
   done
-  # keep generated/schemas (serve-schemas.sh output; vLEI-server reads it)
-  find "${DEV_LIVE_OUT}" -mindepth 1 -maxdepth 1 ! -name schemas -exec rm -rf {} +
+  find "${DEV_LIVE_OUT}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 elif kli aid --name External --base "${DEV_LIVE_BASE}" --alias External >/dev/null 2>&1; then
   echo "keystores already exist under base ${DEV_LIVE_BASE}; re-run with --reset"; exit 1
 fi
@@ -147,6 +146,17 @@ export HOLDER_AID=${HOLDER_AID}
 export QVI_AID=${QVI_AID}
 OUT
 
+render() {  # whitelist-line template output
+  sed -e "s/__EXTERNAL_AID__/${EXTERNAL_AID}/g" -e "s/__QVI_AID__/${QVI_AID}/g" -e "s/__HOLDER_AID__/${HOLDER_AID}/g" \
+      -e "s/__SCHEMA_QVI__/${SCHEMA_QVI}/g" -e "s/__SCHEMA_LE__/${SCHEMA_LE}/g" \
+      -e "s/__SCHEMA_LESR_AUTH__/${SCHEMA_LESR_AUTH}/g" -e "s/__SCHEMA_LESR__/${SCHEMA_LESR}/g" \
+      -e "s|__WHITELIST__|$1|" "${DEV_LIVE_DIR}/$2" > "$3"
+}
+render "[{qvi_aid: ${QVI_AID}}]" server-lesr-simple.config.yaml.tmpl "${DEV_LIVE_DIR}/server-lesr.config.yaml"
+render "[]" server-lesr-simple.config.yaml.tmpl "${DEV_LIVE_DIR}/server-lesr.config.review.yaml"
+render "[{qvi_aid: ${QVI_AID}}]" server-lesr-simple.config.json.yaml.tmpl "${DEV_LIVE_DIR}/server-lesr.config.json.yaml"
+render "[]" server-lesr-simple.config.json.yaml.tmpl "${DEV_LIVE_DIR}/server-lesr.config.json.review.yaml"
+
 cat <<WAIT
 
 QVI and LE credentials granted to ${HOLDER_AID}.
@@ -198,6 +208,7 @@ Chain issued and granted to ${HOLDER_AID}.
 
 Next:
   registrar start --name Registrar --base ${DEV_LIVE_BASE} --alias Registrar --issuer ${QVI_AID}
-  (no echelon-server config is rendered for this chain; point Signet at your own server)
+  echelons serve --host 127.0.0.1 --port 8000 --name Provider --base ${DEV_LIVE_BASE} --alias Provider \\
+    --config ${DEV_LIVE_DIR}/server-lesr.config.yaml
   Locksmith: the holder admits the LESR on its next maintenance pass; env.out already has the OOBIs/env.
 DONE

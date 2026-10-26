@@ -4,7 +4,7 @@
 #   GLEIF External -> QVI -> LE (Practice) -> ECR Auth (to the QVI AID) -> ECR (QVI -> holder AID)
 #   QVI also issues an LE credential to Provider, the echelon-server identity.
 #
-# Prerequisites: `kli witness demo` and vLEI-server on :7723 (see README run order).
+# Prerequisites: `kli witness demo` and network access to the schema bucket (SCHEMA_SERVER in env.sh).
 # Run Locksmith with SIGNET_LIVE=1 first so the holder exists, then:
 #
 #   source scripts/dev-live/env.sh
@@ -19,7 +19,10 @@ HOLDER_AID="${1:-}"
 [ -n "$HOLDER_AID" ] || { echo "usage: $0 <HOLDER_AID> [--reset]  (the signet-dev-holder AID Locksmith logs on vault open)"; exit 1; }
 
 curl -s -m3 -o /dev/null http://127.0.0.1:5642/ || { echo "demo witnesses are not running (kli witness demo)"; exit 1; }
-curl -fsS -m3 "${SCHEMA_SERVER}/oobi/${SCHEMA_ECR}" >/dev/null || { echo "vLEI-server is not serving schemas on ${SCHEMA_SERVER} (see serve-schemas.sh)"; exit 1; }
+for s in "$SCHEMA_QVI" "$SCHEMA_LE" "$SCHEMA_ECR_AUTH" "$SCHEMA_ECR"; do
+  curl -fsS -m10 "${SCHEMA_SERVER}/oobi/${s}" 2>/dev/null | grep -q "$s" \
+    || { echo "schema ${s} is not available at ${SCHEMA_SERVER}/oobi/${s} (bucket unreachable or SAID not published)"; exit 1; }
+done
 
 KERI_ROOT=/usr/local/var/keri
 [ -d "$KERI_ROOT" ] || KERI_ROOT="$HOME/.keri"
@@ -28,8 +31,7 @@ if [ "${2:-}" = "--reset" ]; then
   for d in "$KERI_ROOT"/*/"${DEV_LIVE_BASE}"; do
     [ -d "$d" ] && { echo "removing $d"; rm -rf "$d"; }
   done
-  # keep generated/schemas (serve-schemas.sh output; vLEI-server reads it)
-  find "${DEV_LIVE_OUT}" -mindepth 1 -maxdepth 1 ! -name schemas -exec rm -rf {} + 2>/dev/null || true
+  find "${DEV_LIVE_OUT}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 elif kli aid --name External --base "${DEV_LIVE_BASE}" --alias External >/dev/null 2>&1; then
   echo "keystores already exist under base ${DEV_LIVE_BASE}; re-run with --reset"; exit 1
 fi
@@ -136,12 +138,15 @@ kli ipex grant --name QVI $KB --alias QVI --said "$ECR" --recipient "$HOLDER_AID
 
 # 7. Outputs for the other processes
 SERVER_CONFIG="${DEV_LIVE_DIR}/server-ecr.config.yaml"
-render() {  # whitelist-line output
+render() {  # whitelist-line template output
   sed -e "s/__EXTERNAL_AID__/${EXTERNAL_AID}/g" -e "s/__QVI_AID__/${QVI_AID}/g" -e "s/__PRACTICE_AID__/${PRACTICE_AID}/g" \
-      -e "s|__WHITELIST__|$1|" "${DEV_LIVE_DIR}/server-ecr.config.yaml.tmpl" > "$2"
+      -e "s|__WHITELIST__|$1|" "${DEV_LIVE_DIR}/$2" > "$3"
 }
-render "[{qvi_aid: ${QVI_AID}}]" "${DEV_LIVE_DIR}/server-ecr.config.yaml"
-render "[]" "${DEV_LIVE_DIR}/server-ecr.config.review.yaml"
+render "[{qvi_aid: ${QVI_AID}}]" server-ecr.config.yaml.tmpl "${DEV_LIVE_DIR}/server-ecr.config.yaml"
+render "[]" server-ecr.config.yaml.tmpl "${DEV_LIVE_DIR}/server-ecr.config.review.yaml"
+# json wire format (echelon-server wire_format: json); the same chain, a different onboarding policy
+render "[{qvi_aid: ${QVI_AID}}]" server-ecr.config.json.yaml.tmpl "${DEV_LIVE_DIR}/server-ecr.config.json.yaml"
+render "[]" server-ecr.config.json.yaml.tmpl "${DEV_LIVE_DIR}/server-ecr.config.json.review.yaml"
 
 SIGNET_DEV_OOBIS="$(oobi_of External),$(oobi_of QVI),$(oobi_of Practice)"
 cat > "${DEV_LIVE_OUT}/env.out" <<OUT
@@ -160,5 +165,6 @@ Chain issued and granted to ${HOLDER_AID}.
 Next:
   registrar start --name Registrar --base ${DEV_LIVE_BASE} --alias Registrar --issuer ${QVI_AID}
   echelons serve --host 127.0.0.1 --port 8000 --name Provider --base ${DEV_LIVE_BASE} --alias Provider --config ${SERVER_CONFIG}
+  (json wire format: use ${DEV_LIVE_DIR}/server-ecr.config.json.yaml, or .json.review.yaml for 202 in-review)
   Locksmith: source ${DEV_LIVE_OUT}/env.out (restart so it resolves the issuer OOBIs and admits the grants)
 DONE
